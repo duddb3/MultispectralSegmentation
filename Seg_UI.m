@@ -628,11 +628,13 @@ function Seg_UI(varargin)
     end
 
     function ResetSlice(~,~)
+        backup;
         RIM.BW(:,:,RIM.zsli) = 0;
         IMDisp;
     end
 
     function ResetStudy(~,~)
+        backup;
         RIM.BW = false(size(RIM.I.H2O));
         IMDisp;
     end
@@ -839,7 +841,7 @@ function Seg_UI(varargin)
 
 
 
-    function ThreeDView
+    function ThreeDView(~,~)
         RIM.vol = volshow(RIM.I.RGB, ...
             'RenderingStyle','GradientOpacity',...
             'Transformation',RIM.H2O.info.Transform.T',...

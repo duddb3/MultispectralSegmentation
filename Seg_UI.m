@@ -225,7 +225,7 @@ function Seg_UI(varargin)
             RIM.isdrawing = true;
 
             % Clear analysis fields if they exist
-            analfields = {'H2O','Fat','OP','I','BW','prev','next'};
+            analfields = {'starttime','savetime','totalanalysistime','H2O','Fat','OP','I','BW','prev','next'};
             for sf=1:length(analfields)
                 if isfield(RIM,analfields{sf})
                     RIM = rmfield(RIM,analfields{sf});
@@ -283,9 +283,19 @@ function Seg_UI(varargin)
             end
             save(fullfile(savepath,savefile),'SaveStruct')
             % Write the mask as a nifti
+            savemask = flip(rot90(uint8(RIM.BW),-1));
             minfo = RIM.H2O.info;
             minfo.Datatype = 'uint8';
-            niftiwrite(rot90(flip(uint8(RIM.BW)),-1),fullfile(savepath,strrep(savefile,'.mat','.nii')),minfo);
+            % re-apply flips
+            tform = RIM.H2O.info.Transform.T(1:3,1:3);
+            [u,~,v] = svd(tform);
+            rot = u*v';
+            ev = eig(rot);
+            flipdims = find(sign(real(ev))==-1);
+            for fd = 1:length(flipdims)
+                savemask = flip(savemask,flipdims(fd));
+            end
+            niftiwrite(savemask,fullfile(savepath,strrep(savefile,'.mat','.nii')),minfo);
 
         case 'Load'
             % Select the analysis file to load
@@ -328,12 +338,35 @@ function Seg_UI(varargin)
         w = waitbar(0,'Loading Images');
         niifiles = {RIM.H2O.name,RIM.Fat.name,RIM.OP.name};
         for nf=1:length(niifiles)
+            if ~exist(niifiles{nf},'file')
+                [nfile,npth] = uigetfile('*.nii',sprintf('Looking for %s',niifiles{nf}),fileparts(niifiles{nf}));
+                if isequal(npth,0)
+                    return
+                end
+                niifiles{nf} = fullfile(npth,nfile);
+            end
             futarr(nf) = parfeval(backgroundPool,@niftiread,1,niifiles{nf});
         end
+        tform = RIM.H2O.info.Transform.T(1:3,1:3);
+        [u,~,v] = svd(tform);
+        rot = u*v';
+        ev = eig(rot);
+        flipdims = find(sign(real(ev))==-1);
         wait(futarr)
-        RIM.I.H2O = mat2gray(flip(rot90(fetchOutputs(futarr(1)))));
-        RIM.I.Fat = mat2gray(flip(rot90(fetchOutputs(futarr(2)))));
-        RIM.I.OP = mat2gray(flip(rot90(fetchOutputs(futarr(3)))));
+        % Fetch the data
+        RIM.I.H2O = fetchOutputs(futarr(1));
+        RIM.I.Fat = fetchOutputs(futarr(2));
+        RIM.I.OP = fetchOutputs(futarr(3));
+        % Apply flips according to nifti header
+        for fd = 1:length(flipdims)
+            RIM.I.H2O = flip(RIM.I.H2O,flipdims(fd));
+            RIM.I.Fat = flip(RIM.I.Fat,flipdims(fd));
+            RIM.I.OP = flip(RIM.I.OP,flipdims(fd));
+        end
+        % rotate for display purposes
+        RIM.I.H2O = mat2gray(rot90(flip(RIM.I.H2O)));
+        RIM.I.Fat = mat2gray(rot90(flip(RIM.I.Fat)));
+        RIM.I.OP = mat2gray(rot90(flip(RIM.I.OP)));
         
         % Create a background mask from the input images
         waitbar(0.5,w,'Detecting background');
